@@ -689,7 +689,8 @@ class TelegramBot(TeleBot):
                 timeout=10,
             )
             return round(float(response.json()["price"]), 3)
-        except Exception as binance_error:
+        except Exception as e:
+            binance_error = e
             logger.warning(f"Binance futures price failed for {symbol}: {binance_error}")
         gecko_ids = {
             "BTC": "bitcoin", "ETH": "ethereum", "BNB": "binancecoin",
@@ -712,7 +713,8 @@ class TelegramBot(TeleBot):
                 timeout=10,
             )
             return round(float(gecko_response.json()[gecko_id][vs]), 3)
-        except Exception as gecko_error:
+        except Exception as e2:
+            gecko_error = e2
             logger.exception(f"CoinGecko price also failed for {pair}", exc_info=gecko_error)
             raise ValueError(
                 f"Could not fetch the price of {pair}.\n"
