@@ -716,6 +716,22 @@ class TelegramBot(TeleBot):
         except Exception as e2:
             gecko_error = e2
             logger.exception(f"CoinGecko price also failed for {pair}", exc_info=gecko_error)
+            cb_quote = {"USDT": "USD", "USDC": "USD", "BUSD": "USD", "USD": "USD"}.get(parts[-1].upper())
+            if cb_quote:
+                try:
+                    cb_response = requests.get(
+                        f"https://api.coinbase.com/v2/prices/{parts[0].upper()}-{cb_quote}/spot",
+                        timeout=10,
+                    )
+                    cb_response.raise_for_status()
+                    return round(float(cb_response.json()["data"]["amount"]), 3)
+                except Exception as e3:
+                    coinbase_error = e3
+                    logger.exception(f"Coinbase price also failed for {pair}", exc_info=coinbase_error)
+                    raise ValueError(
+                        f"Could not fetch the price of {pair}.\n"
+                        f"Binance: {binance_error}; CoinGecko: {gecko_error}; Coinbase: {coinbase_error}"
+                    )
             raise ValueError(
                 f"Could not fetch the price of {pair}.\n"
                 f"Binance: {binance_error}; CoinGecko: {gecko_error}"
