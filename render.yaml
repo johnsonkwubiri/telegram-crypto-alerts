@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: telegram-crypto-alerts
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m src
+    healthCheckPath: /health
+    envVars:
+      - key: TELEGRAM_USER_ID
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: LOCATION
+        value: global
