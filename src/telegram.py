@@ -680,31 +680,43 @@ class TelegramBot(TeleBot):
         return wrapper
 
     def get_latest_binance_price(self, pair):
+        """Price via Binance Futures, falling back to CoinGecko (spot API is geo-blocked on Render US)."""
+        symbol = pair.replace("/", "").upper()
         try:
             response = requests.get(
-                self.binance_price_endpoint.format(
-                    pair.replace("/", ""), BINANCE_TIMEFRAMES[0]
-                )
+                "https://fapi.binance.com/fapi/v1/ticker/price",
+                params={"symbol": symbol},
+                timeout=10,
             )
-            # response = requests.get(f'https://api.binance.com/api/v3/ticker/price?symbol={pair.replace("/", "")}')
-            try:
-                return round(float(response.json()["lastPrice"]), 3)
-            except KeyError:
-                raise ValueError(
-                    f"{pair} is not a valid pair.\n" f"API Response: {response.json()}"
-                )
-        except KeyError:
+            return round(float(response.json()["price"]), 3)
+        except Exception as binance_error:
+            logger.warning(f"Binance futures price failed for {symbol}: {binance_error}")
+        gecko_ids = {
+            "BTC": "bitcoin", "ETH": "ethereum", "BNB": "binancecoin",
+            "SOL": "solana", "XRP": "ripple", "ADA": "cardano",
+            "DOGE": "dogecoin", "TRX": "tron", "TON": "the-open-network",
+            "USDT": "tether", "USDC": "usd-coin",
+        }
+        parts = pair.split("/")
+        gecko_id = gecko_ids.get(parts[0].upper())
+        vs = {"USDT": "usd", "USDC": "usd", "BUSD": "usd", "USD": "usd"}.get(parts[-1].upper())
+        if not gecko_id or not vs:
             raise ValueError(
                 f"{pair} is not a valid pair.\n"
                 f"Please make sure to use this formatting: TOKEN1/TOKEN2"
             )
-        except Exception as exc:
-            logger.exception(
-                f"An unexpected error occurred when trying to fetch the binance price of {pair}",
-                exc_info=exc,
+        try:
+            gecko_response = requests.get(
+                "https://api.coingecko.com/api/v3/simple/price",
+                params={"ids": gecko_id, "vs_currencies": vs},
+                timeout=10,
             )
-            raise Exception(
-                f"An unexpected error has occurred when trying to fetch the price of {pair} on Binance - {exc}"
+            return round(float(gecko_response.json()[gecko_id][vs]), 3)
+        except Exception as gecko_error:
+            logger.exception(f"CoinGecko price also failed for {pair}", exc_info=gecko_error)
+            raise ValueError(
+                f"Could not fetch the price of {pair}.\n"
+                f"Binance: {binance_error}; CoinGecko: {gecko_error}"
             )
 
     def get_technical_indicator(self, indicator: TechnicalAlert) -> dict:
