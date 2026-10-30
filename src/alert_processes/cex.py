@@ -217,10 +217,22 @@ class CEXAlertProcess(BaseAlertProcess):
                     raise ValueError("CoinGecko returned a non-positive price")
                 return price
             except Exception as gecko_error:
-                raise ConnectionAbortedError(
-                    f"Binance futures and CoinGecko price requests failed for {symbol}: "
-                    f"Binance: {binance_error}; CoinGecko: {gecko_error}"
-                ) from gecko_error
+                coinbase_pair = f"{base}-{ 'USD' if vs_currency == 'usd' else vs_currency.upper() }"
+                try:
+                    response = requests.get(
+                        f"https://api.coinbase.com/v2/prices/{coinbase_pair}/spot",
+                        timeout=10,
+                    )
+                    response.raise_for_status()
+                    price = float(response.json()["data"]["amount"])
+                    if price <= 0:
+                        raise ValueError("Coinbase returned a non-positive price")
+                    return price
+                except Exception as coinbase_error:
+                    raise ConnectionAbortedError(
+                        f"All price sources failed for {symbol}: "
+                        f"Binance: {binance_error}; CoinGecko: {gecko_error}; Coinbase: {coinbase_error}"
+                    ) from coinbase_error
 
     def get_pct_change(
         self,
@@ -283,10 +295,26 @@ class CEXAlertProcess(BaseAlertProcess):
                 response.raise_for_status()
                 return float(response.json()[coin_id][f"{vs_currency}_24h_change"])
             except Exception as gecko_error:
-                raise ConnectionAbortedError(
-                    f"Binance and CoinGecko 24h change requests failed for {symbol}: "
-                    f"Binance: {binance_error}; CoinGecko: {gecko_error}"
-                ) from gecko_error
+                coinbase_pair = f"{base}-{ 'USD' if vs_currency == 'usd' else vs_currency.upper() }"
+                try:
+                    now_response = requests.get(
+                        f"https://api.coinbase.com/v2/prices/{coinbase_pair}/spot", timeout=10)
+                    now_response.raise_for_status()
+                    now_price = float(now_response.json()["data"]["amount"])
+                    from datetime import datetime, timedelta, timezone
+                    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+                    past_response = requests.get(
+                        f"https://api.coinbase.com/v2/prices/{coinbase_pair}/spot",
+                        params={"date": yesterday}, timeout=10)
+                    past_response.raise_for_status()
+                    past_price = float(past_response.json()["data"]["amount"])
+                    change = (now_price - past_price) / past_price * 100
+                    return change
+                except Exception as coinbase_error:
+                    raise ConnectionAbortedError(
+                        f"All 24h change sources failed for {symbol}: "
+                        f"Binance: {binance_error}; CoinGecko: {gecko_error}; Coinbase: {coinbase_error}"
+                    ) from coinbase_error
 
     def tg_alert(self, post: str, channel_ids: list[str], pair: str = None) -> tuple:
         """
